@@ -12,7 +12,7 @@ from allrank.utils.file_utils import open_local_or_gs
 from allrank.utils.ltr_logging import get_logger
 
 logger = get_logger()
-PADDED_Y_VALUE = -1
+PADDED_Y_VALUE = -99
 PADDED_INDEX_VALUE = -1
 
 
@@ -20,13 +20,15 @@ class ToTensor(object):
     """
     Wrapper for ndarray->Tensor conversion.
     """
+
     def __call__(self, sample):
         """
         :param sample: tuple of three ndarrays
         :return: ndarrays converted to tensors
         """
         x, y, indices = sample
-        return torch.from_numpy(x).type(torch.float32), torch.from_numpy(y).type(torch.float32), torch.from_numpy(indices).type(torch.long)
+        return torch.from_numpy(x).type(torch.float32), torch.from_numpy(y).type(torch.float32), torch.from_numpy(
+            indices).type(torch.long)
 
 
 class FixLength(object):
@@ -36,6 +38,7 @@ class FixLength(object):
     For a given slate, if its length is less than self.dim_given, x's and y's are padded with zeros to match that length.
     If its length is greater than self.dim_given, a random sample of items from that slate is taken to match the self.dim_given.
     """
+
     def __init__(self, dim_given):
         """
         :param dim_given: dimensionality of x after length fixing operation
@@ -71,7 +74,8 @@ class FixLength(object):
         fixed_len_y = sample[1][indices]
         if fixed_len_y.sum() == 0:
             if sample[1].sum() == 1:
-                indices = np.concatenate([np.random.choice(indices, self.dim_given - 1, replace=False), [np.argmax(sample[1])]])
+                indices = np.concatenate(
+                    [np.random.choice(indices, self.dim_given - 1, replace=False), [np.argmax(sample[1])]])
                 fixed_len_y = sample[1][indices]
             elif sample[1].sum() > 0:
                 return self._sample(sample, sample_size)
@@ -89,7 +93,8 @@ class FixLength(object):
         """
         fixed_len_x = np.pad(sample[0], ((0, self.dim_given - sample_size), (0, 0)), "constant")
         fixed_len_y = np.pad(sample[1], (0, self.dim_given - sample_size), "constant", constant_values=PADDED_Y_VALUE)
-        indices = np.pad(np.arange(0, sample_size), (0, self.dim_given - sample_size), "constant", constant_values=PADDED_INDEX_VALUE)
+        indices = np.pad(np.arange(0, sample_size), (0, self.dim_given - sample_size), "constant",
+                         constant_values=PADDED_INDEX_VALUE)
         return fixed_len_x, fixed_len_y, indices
 
 
@@ -97,6 +102,7 @@ class LibSVMDataset(Dataset):
     """
     LibSVM Learning to Rank dataset.
     """
+
     def __init__(self, X, y, query_ids, transform=None):
         """
         :param X: scipy sparse matrix containing features of the dataset of shape [dataset_size, features_dim]
