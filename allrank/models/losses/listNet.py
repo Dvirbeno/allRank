@@ -27,4 +27,4 @@ def listNet(y_pred, y_true, eps=DEFAULT_EPS, padded_value_indicator=PADDED_Y_VAL
     preds_smax = preds_smax + eps
     preds_log = torch.log(preds_smax)
 
-    return torch.mean(-torch.sum(true_smax * preds_log, dim=1))
+    return torch.mean(-torch.mean(true_smax * preds_log, dim=1))
