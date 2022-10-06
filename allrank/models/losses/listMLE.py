@@ -4,6 +4,24 @@ from allrank.data.dataset_loading import PADDED_Y_VALUE
 from allrank.models.losses import DEFAULT_EPS
 
 
+def arg_shuffle_ties(batch_rankings, descending=True, device=None):
+    '''Shuffle ties, and return the corresponding indice '''
+    batch_size, ranking_size = batch_rankings.size()
+    if batch_size > 1:
+        list_rperms = []
+        for _ in range(batch_size):
+            list_rperms.append(torch.randperm(ranking_size, device=device))
+        batch_rperms = torch.stack(list_rperms, dim=0)
+    else:
+        batch_rperms = torch.randperm(ranking_size, device=device).view(1, -1)
+
+    batch_shuffled_rankings = torch.gather(batch_rankings, dim=1, index=batch_rperms)
+    batch_desc_inds = torch.argsort(batch_shuffled_rankings, descending=descending)
+    batch_shuffle_ties_inds = torch.gather(batch_rperms, dim=1, index=batch_desc_inds)
+
+    return batch_shuffle_ties_inds
+
+
 def listMLE(y_pred, y_true, eps=DEFAULT_EPS, padded_value_indicator=PADDED_Y_VALUE):
     """
     ListMLE loss introduced in "Listwise Approach to Learning to Rank - Theory and Algorithm".
@@ -35,4 +53,36 @@ def listMLE(y_pred, y_true, eps=DEFAULT_EPS, padded_value_indicator=PADDED_Y_VAL
 
     observation_loss[mask] = 0.0
 
-    return torch.mean(torch.sum(observation_loss, dim=1))
+    return torch.mean(torch.mean(observation_loss, dim=1))
+
+
+def altListMLE(batch_preds, batch_std_labels):
+    '''
+    @param batch_preds: [batch, ranking_size] each row represents the relevance predictions for documents associated with the same query
+    @param batch_std_labels: [batch, ranking_size] each row represents the standard relevance grades for documents associated with the same query
+    @param kwargs:
+    @return:
+    '''
+    # shuffle per epoch rather than using the same order for a query
+    batch_shuffle_ties_inds = arg_shuffle_ties(batch_rankings=batch_std_labels, descending=True,
+                                               device=batch_std_labels.device)
+    batch_preds_shuffled_ties = torch.gather(batch_preds, dim=1, index=batch_shuffle_ties_inds)
+
+    # 1 using self-defined op since torch.flip() is later added
+    '''
+    batch_logcumsumexps = apply_LogCumsumExp(target_batch_preds)
+    batch_loss = torch.sum(batch_logcumsumexps - target_batch_preds)
+    '''
+
+    # 2 since torch.flip() is available now, the loss can also be directly computed without defining a new op
+    # '''
+    m, _ = torch.max(batch_preds_shuffled_ties, dim=1,
+                     keepdim=True)  # a transformation aiming for higher stability when computing softmax() with exp()
+    y = batch_preds_shuffled_ties - m
+    y = torch.exp(y)
+    y_backward_cumsum = torch.flip(torch.cumsum(torch.flip(y, dims=[1]), dim=1),
+                                   dims=[1])  # row-wise cumulative sum, from tail to head
+    batch_logcumsumexps = torch.log(y_backward_cumsum) + m  # corresponding to the '-m' operation
+    batch_loss = torch.sum(torch.sum((batch_logcumsumexps - batch_preds_shuffled_ties), dim=1))
+
+    return batch_loss
